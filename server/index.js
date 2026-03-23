@@ -339,6 +339,37 @@ app.get('/run-seed', async (req, res) => {
   }
 });
 
+
+// ── RUN MIGRATION ENDPOINT ───────────────────────────────────
+app.get('/run-migration', async (req, res) => {
+  try {
+    const db = require('./db');
+    const fs = require('fs');
+    const path = require('path');
+    const schemaPath = path.join(__dirname, '..', 'schema.sql');
+    let sql = fs.readFileSync(schemaPath, 'utf8')
+      .replace(/CREATE DATABASE[^;]+;/gi, '')
+      .replace(/USE [^;]+;/gi, '');
+    
+    // Split and run statement by statement
+    const stmts = sql.split(';').map(s => s.trim()).filter(s => s.length > 10);
+    const results = [];
+    for (const stmt of stmts) {
+      try {
+        await db.execute(stmt);
+        const match = stmt.match(/CREATE TABLE.*?`(\w+)`/i);
+        if (match) results.push('✓ ' + match[1]);
+      } catch(e) {
+        const match = stmt.match(/CREATE TABLE.*?`(\w+)`/i);
+        if (match) results.push('~ ' + match[1] + ' (already exists)');
+      }
+    }
+    res.send('<h2>Migration complete</h2><pre>' + results.join('\n') + '</pre><p><a href="/run-seed?email=' + (req.query.email||'') + '">Now run seed →</a></p>');
+  } catch(e) {
+    res.send('<pre>Error: ' + e.stack + '</pre>');
+  }
+});
+
 app.get('/health', (_, res) => res.json({ ok: true, ts: new Date() }));
 
 // ONE-TIME RESET ENDPOINT — remove after use
