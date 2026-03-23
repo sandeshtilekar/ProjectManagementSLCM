@@ -109,13 +109,22 @@ app.use('/api/upload', fileRoutes);
 app.get('/health', (_, res) => res.json({ ok: true, ts: new Date() }));
 
 // ── Integration routes (ServiceNow + Snowflake) ──────────────
-const integrationRoutes = require('./routes/integrations');
-app.use('/api', integrationRoutes);
+try {
+  const integrationRoutes = require('./routes/integrations');
+  app.use('/api', integrationRoutes);
+  console.log('✅ Integration routes loaded');
+} catch (e) {
+  console.warn('⚠  Integration routes not available:', e.message);
+}
 
 // ── Start background sync worker ─────────────────────────────
-if (process.env.NODE_ENV === 'production' || process.env.ENABLE_SYNC_WORKER === 'true') {
-  const { startSyncWorker } = require('./workers/syncWorker');
-  startSyncWorker();
+if (process.env.ENABLE_SYNC_WORKER === 'true') {
+  try {
+    const { startSyncWorker } = require('./workers/syncWorker');
+    startSyncWorker();
+  } catch (e) {
+    console.warn('⚠  Sync worker not available:', e.message);
+  }
 }
 
 // Serve React in production
