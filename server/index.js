@@ -130,7 +130,7 @@ if (process.env.ENABLE_SYNC_WORKER === 'true') {
 
 // Serve React in production
 if (process.env.NODE_ENV === 'production') {
-  const clientDist = path.resolve(__dirname, '../client/dist');
+  const clientDist = path.resolve(__dirname, 'client/dist');
   app.use(express.static(clientDist));
   app.get('*', (_, res) => res.sendFile(path.join(clientDist, 'index.html')));
 }
