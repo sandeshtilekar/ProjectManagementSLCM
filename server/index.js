@@ -114,20 +114,19 @@ try {
   app.use('/api', integrationRoutes);
   console.log('✅ Integration routes loaded');
 } catch (e) {
-  console.warn('⚠  Integration routes not available:', e.message);
+  console.warn('⚠  Integration routes skipped:', e.message);
 }
 
-// ── Start background sync worker ─────────────────────────────
-//if (process.env.ENABLE_SYNC_WORKER === 'true') {
-  //try {
-    //const { startSyncWorker } = require('./workers/syncWorker');
-    //startSyncWorker();
-  } //catch (e) {
-    //console.warn('⚠  Sync worker not available:', e.message);
-  //}
-//}
-// Sync worker disabled for initial deployment
-// Enable via ENABLE_SYNC_WORKER=true once integration tables exist
+// ── Sync worker disabled — enable after integration tables exist
+// Set ENABLE_SYNC_WORKER=true in Railway Variables to activate
+if (process.env.ENABLE_SYNC_WORKER === 'true') {
+  try {
+    const { startSyncWorker } = require('./workers/syncWorker');
+    startSyncWorker();
+  } catch (e) {
+    console.warn('⚠  Sync worker skipped:', e.message);
+  }
+}
 
 // Serve React in production
 if (process.env.NODE_ENV === 'production') {
