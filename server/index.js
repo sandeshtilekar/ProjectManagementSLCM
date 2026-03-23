@@ -118,14 +118,16 @@ try {
 }
 
 // ── Start background sync worker ─────────────────────────────
-if (process.env.ENABLE_SYNC_WORKER === 'true') {
-  try {
-    const { startSyncWorker } = require('./workers/syncWorker');
-    startSyncWorker();
-  } catch (e) {
-    console.warn('⚠  Sync worker not available:', e.message);
-  }
-}
+//if (process.env.ENABLE_SYNC_WORKER === 'true') {
+  //try {
+    //const { startSyncWorker } = require('./workers/syncWorker');
+    //startSyncWorker();
+  } //catch (e) {
+    //console.warn('⚠  Sync worker not available:', e.message);
+  //}
+//}
+// Sync worker disabled for initial deployment
+// Enable via ENABLE_SYNC_WORKER=true once integration tables exist
 
 // Serve React in production
 if (process.env.NODE_ENV === 'production') {
