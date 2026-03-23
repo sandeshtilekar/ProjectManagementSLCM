@@ -1,11 +1,11 @@
 {
   "name": "ensono-datagrid",
   "version": "1.0.1",
-  "description": "Ensono DataGrid — Built by Sandesh Tilekar",
+  "description": "Ensono DataGrid \u2014 Built by Sandesh Tilekar",
   "scripts": {
-    "build": "cd client && npm ci && npm run build",
+    "build": "cd client && npm install && npm run build",
     "start": "bash railway-start.sh",
-    "install:all": "cd server && npm install && cd ../client && npm ci"
+    "install:all": "cd server && npm install && cd ../client && npm install"
   },
   "engines": {
     "node": ">=20.0.0"

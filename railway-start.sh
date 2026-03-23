@@ -20,7 +20,7 @@ cd server && npm install --production && cd ..
 # ── Build frontend if dist missing ──────
 if [ ! -d "server/client/dist" ]; then
   echo "→ Building frontend..."
-  cd client && npm ci && npm run build && cd ..
+  cd client && npm install && npm run build && cd ..
   echo "✓ Frontend built"
 fi
 
