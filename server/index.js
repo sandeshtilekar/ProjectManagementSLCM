@@ -77,6 +77,7 @@ app.use(helmet({
 app.use(compression());
 app.use(cors(corsOptions));
 app.use(express.json({ limit: '2mb' }));
+app.set('trust proxy', 1);
 app.use(morgan(process.env.NODE_ENV === 'production' ? 'combined' : 'dev'));
 
 // Serve uploaded files — same-site only, no inline execution
