@@ -5,65 +5,25 @@ echo "━━━━━━━━━━━━━━━━━━━━━━━━�
 echo " Ensono DataGrid — Railway startup"
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 
-# ── Map Railway MySQL plugin variables ──
-export DB_HOST="${MYSQLHOST:-${DB_HOST:-localhost}}"
-export DB_PORT="${MYSQLPORT:-${DB_PORT:-3306}}"
-export DB_USER="${MYSQLUSER:-${DB_USER:-root}}"
-export DB_PASS="${MYSQLPASSWORD:-${DB_PASS:-}}"
-export DB_NAME="${MYSQLDATABASE:-${DB_NAME:-railway}}"
+# Step 1: Install server deps
+echo "→ Installing server dependencies..."
+cd /app/server
+npm install --omit=dev
+echo "✓ Server deps installed"
 
-echo "→ DB: $DB_USER@$DB_HOST:$DB_PORT/$DB_NAME"
-
-# ── Install server deps if missing ──────
-cd server && npm install --production && cd ..
-
-# ── Build frontend if dist missing ──────
-if [ ! -d "server/client/dist" ]; then
+# Step 2: Build frontend if needed
+if [ ! -d "/app/server/client/dist" ]; then
   echo "→ Building frontend..."
-  cd client && npm install && npm run build && cd ..
+  cd /app/client && npm install && npm run build
   echo "✓ Frontend built"
 fi
 
-# ── Wait for MySQL ──────────────────────
-echo "→ Waiting for MySQL..."
-for i in $(seq 1 30); do
-  if node -e "
-    const mysql = require('mysql2');
-    const c = mysql.createConnection({
-      host:'$DB_HOST',port:$DB_PORT,
-      user:'$DB_USER',password:'$DB_PASS'
-    });
-    c.connect(e=>{process.exit(e?1:0)});
-  " 2>/dev/null; then
-    echo "✓ MySQL ready"
-    break
-  fi
-  echo "  Attempt $i/30..."
-  sleep 2
-done
+# Step 3: Run migration via Node (no shell interpolation issues)
+echo "→ Running database setup..."
+cd /app/server
+node migrate.js
 
-# ── Run schema migration ────────────────
-echo "→ Running schema migration..."
-node -e "
-const mysql = require('mysql2/promise');
-const fs = require('fs');
-async function run() {
-  const conn = await mysql.createConnection({
-    host:'$DB_HOST', port:$DB_PORT,
-    user:'$DB_USER', password:'$DB_PASS',
-    database:'$DB_NAME', multipleStatements:true
-  });
-  const sql = fs.readFileSync('schema.sql','utf8')
-    .replace(/CREATE DATABASE[^;]+;/gi,'')
-    .replace(/USE [^;]+;/gi,'');
-  await conn.query(sql);
-  await conn.end();
-  console.log('✓ Schema migration complete');
-}
-run().catch(e=>{ console.error('Migration error:', e.message); });
-"
-
-# ── Set defaults ────────────────────────
+# Step 4: Runtime config
 export NODE_ENV="${NODE_ENV:-production}"
 export PORT="${PORT:-4000}"
 export UPLOAD_DIR="${UPLOAD_DIR:-/tmp/uploads}"
@@ -76,9 +36,11 @@ export CLIENT_URL="${CLIENT_URL:-http://localhost:$PORT}"
 
 if [ -z "$JWT_SECRET" ]; then
   export JWT_SECRET=$(node -e "console.log(require('crypto').randomBytes(32).toString('hex'))")
-  echo "⚠ JWT_SECRET auto-generated — set it in Railway Variables for stable auth"
+  echo "⚠ JWT_SECRET not set in Variables — sessions will reset on redeploy"
 fi
 
-echo "→ Starting on port $PORT | URL: $CLIENT_URL"
+echo "→ Port: $PORT | URL: $CLIENT_URL"
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-cd server && exec node index.js
+
+# Step 5: Start server
+exec node index.js
