@@ -6,7 +6,7 @@
 'use strict';
 
 const { nanoid } = require('nanoid');
-const db = require('../db');
+const db = require('./db');
 const makeId = () => nanoid(12);
 
 async function createField(tableId, name, type, order, options, isPrimary) {
