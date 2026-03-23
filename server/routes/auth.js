@@ -123,6 +123,16 @@ router.post('/register', [
     } catch(e) { await conn.rollback(); throw e; }
     finally { conn.release(); }
 
+    // Seed PM workspace templates for new user
+    try {
+      const { seedPMWorkspace } = require('../seed');
+      const seedConn = await db.getConnection();
+      await seedPMWorkspace(seedConn, wsId, baseId, userId);
+      seedConn.release();
+    } catch(e) {
+      console.warn('Seed warning (non-fatal):', e.message);
+    }
+
     const { access, refresh } = issueTokens(userId);
     await storeRefresh(userId, refresh);
 
