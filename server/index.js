@@ -342,32 +342,140 @@ app.get('/run-seed', async (req, res) => {
 
 // ── RUN MIGRATION ENDPOINT ───────────────────────────────────
 app.get('/run-migration', async (req, res) => {
-  try {
-    const db = require('./db');
-    const fs = require('fs');
-    const path = require('path');
-    const schemaPath = path.join(__dirname, '..', 'schema.sql');
-    let sql = fs.readFileSync(schemaPath, 'utf8')
-      .replace(/CREATE DATABASE[^;]+;/gi, '')
-      .replace(/USE [^;]+;/gi, '');
-    
-    // Split and run statement by statement
-    const stmts = sql.split(';').map(s => s.trim()).filter(s => s.length > 10);
-    const results = [];
-    for (const stmt of stmts) {
-      try {
-        await db.execute(stmt);
-        const match = stmt.match(/CREATE TABLE.*?`(\w+)`/i);
-        if (match) results.push('✓ ' + match[1]);
-      } catch(e) {
-        const match = stmt.match(/CREATE TABLE.*?`(\w+)`/i);
-        if (match) results.push('~ ' + match[1] + ' (already exists)');
-      }
+  const db = require('./db');
+  const tables = [
+    [`CREATE TABLE IF NOT EXISTS users (
+      id VARCHAR(12) NOT NULL,
+      email VARCHAR(255) NOT NULL,
+      password_hash VARCHAR(255) NOT NULL,
+      full_name VARCHAR(120) NOT NULL,
+      avatar_url VARCHAR(500) DEFAULT NULL,
+      is_verified TINYINT(1) NOT NULL DEFAULT 0,
+      failed_attempts SMALLINT NOT NULL DEFAULT 0,
+      locked_until DATETIME DEFAULT NULL,
+      created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+      PRIMARY KEY (id), UNIQUE KEY uq_email (email)
+    ) ENGINE=InnoDB`, 'users'],
+    [`CREATE TABLE IF NOT EXISTS refresh_tokens (
+      id VARCHAR(12) NOT NULL,
+      user_id VARCHAR(12) NOT NULL,
+      token_hash VARCHAR(64) NOT NULL,
+      expires_at DATETIME NOT NULL,
+      created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      PRIMARY KEY (id), UNIQUE KEY uq_token (token_hash)
+    ) ENGINE=InnoDB`, 'refresh_tokens'],
+    [`CREATE TABLE IF NOT EXISTS workspaces (
+      id VARCHAR(12) NOT NULL,
+      name VARCHAR(120) NOT NULL,
+      slug VARCHAR(130) NOT NULL,
+      owner_id VARCHAR(12) DEFAULT NULL,
+      plan ENUM('free','pro','enterprise') NOT NULL DEFAULT 'free',
+      created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+      PRIMARY KEY (id), UNIQUE KEY uq_slug (slug)
+    ) ENGINE=InnoDB`, 'workspaces'],
+    [`CREATE TABLE IF NOT EXISTS workspace_members (
+      workspace_id VARCHAR(12) NOT NULL,
+      user_id VARCHAR(12) NOT NULL,
+      role ENUM('owner','admin','editor','viewer') NOT NULL DEFAULT 'editor',
+      invited_by VARCHAR(12) DEFAULT NULL,
+      created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      PRIMARY KEY (workspace_id, user_id)
+    ) ENGINE=InnoDB`, 'workspace_members'],
+    [`CREATE TABLE IF NOT EXISTS bases (
+      id VARCHAR(12) NOT NULL,
+      workspace_id VARCHAR(12) NOT NULL,
+      name VARCHAR(120) NOT NULL,
+      color VARCHAR(20) DEFAULT '#E8481C',
+      icon VARCHAR(10) DEFAULT 'E',
+      created_by VARCHAR(12) DEFAULT NULL,
+      created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      PRIMARY KEY (id)
+    ) ENGINE=InnoDB`, 'bases'],
+    [`CREATE TABLE IF NOT EXISTS \`tables\` (
+      id VARCHAR(12) NOT NULL,
+      base_id VARCHAR(12) NOT NULL,
+      name VARCHAR(120) NOT NULL,
+      order_index INT NOT NULL DEFAULT 0,
+      created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      PRIMARY KEY (id)
+    ) ENGINE=InnoDB`, 'tables'],
+    [`CREATE TABLE IF NOT EXISTS fields (
+      id VARCHAR(12) NOT NULL,
+      table_id VARCHAR(12) NOT NULL,
+      name VARCHAR(120) NOT NULL,
+      type ENUM('text','number','singleSelect','multiSelect','date','checkbox','email','url','phone','rating','attachment') NOT NULL DEFAULT 'text',
+      options JSON DEFAULT NULL,
+      width INT DEFAULT 150,
+      order_index INT NOT NULL DEFAULT 0,
+      is_primary TINYINT(1) NOT NULL DEFAULT 0,
+      created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      PRIMARY KEY (id)
+    ) ENGINE=InnoDB`, 'fields'],
+    [`CREATE TABLE IF NOT EXISTS records (
+      id VARCHAR(12) NOT NULL,
+      table_id VARCHAR(12) NOT NULL,
+      order_index INT NOT NULL DEFAULT 0,
+      created_by VARCHAR(12) DEFAULT NULL,
+      created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+      PRIMARY KEY (id)
+    ) ENGINE=InnoDB`, 'records'],
+    [`CREATE TABLE IF NOT EXISTS cell_values (
+      record_id VARCHAR(12) NOT NULL,
+      field_id VARCHAR(12) NOT NULL,
+      value_text TEXT DEFAULT NULL,
+      value_num DOUBLE DEFAULT NULL,
+      value_bool TINYINT(1) DEFAULT NULL,
+      value_json JSON DEFAULT NULL,
+      PRIMARY KEY (record_id, field_id)
+    ) ENGINE=InnoDB`, 'cell_values'],
+    [`CREATE TABLE IF NOT EXISTS attachments (
+      id VARCHAR(12) NOT NULL,
+      record_id VARCHAR(12) NOT NULL,
+      field_id VARCHAR(12) NOT NULL,
+      original_name VARCHAR(255) NOT NULL,
+      stored_name VARCHAR(255) NOT NULL,
+      mime_type VARCHAR(120) NOT NULL,
+      size_bytes INT NOT NULL DEFAULT 0,
+      url VARCHAR(500) NOT NULL,
+      uploaded_by VARCHAR(12) DEFAULT NULL,
+      created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      PRIMARY KEY (id)
+    ) ENGINE=InnoDB`, 'attachments'],
+    [`CREATE TABLE IF NOT EXISTS views (
+      id VARCHAR(12) NOT NULL,
+      table_id VARCHAR(12) NOT NULL,
+      name VARCHAR(120) NOT NULL,
+      type ENUM('grid','kanban','gallery') NOT NULL DEFAULT 'grid',
+      config JSON DEFAULT NULL,
+      order_index INT NOT NULL DEFAULT 0,
+      created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      PRIMARY KEY (id)
+    ) ENGINE=InnoDB`, 'views'],
+    [`CREATE TABLE IF NOT EXISTS activity_log (
+      id VARCHAR(12) NOT NULL,
+      workspace_id VARCHAR(12) NOT NULL,
+      user_id VARCHAR(12) DEFAULT NULL,
+      action VARCHAR(80) NOT NULL,
+      entity_type VARCHAR(40) DEFAULT NULL,
+      entity_id VARCHAR(12) DEFAULT NULL,
+      meta JSON DEFAULT NULL,
+      created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      PRIMARY KEY (id)
+    ) ENGINE=InnoDB`, 'activity_log'],
+  ];
+  const results = [];
+  for (const [sql, name] of tables) {
+    try {
+      await db.execute(sql);
+      results.push('✓ ' + name);
+    } catch(e) {
+      results.push('✗ ' + name + ': ' + e.message);
     }
-    res.send('<h2>Migration complete</h2><pre>' + results.join('\n') + '</pre><p><a href="/run-seed?email=' + (req.query.email||'') + '">Now run seed →</a></p>');
-  } catch(e) {
-    res.send('<pre>Error: ' + e.stack + '</pre>');
   }
+  res.send('<h2>Migration complete</h2><pre>' + results.join('\n') + '</pre><p><a href="/run-seed?email=' + (req.query.email||'') + '">Now run seed →</a></p>');
 });
 
 app.get('/health', (_, res) => res.json({ ok: true, ts: new Date() }));
