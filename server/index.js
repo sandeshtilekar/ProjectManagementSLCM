@@ -77,7 +77,6 @@ app.use(helmet({
 app.use(compression());
 app.use(cors(corsOptions));
 app.use(express.json({ limit: '2mb' }));
-app.set('trust proxy', 1);
 app.use(morgan(process.env.NODE_ENV === 'production' ? 'combined' : 'dev'));
 
 // Serve uploaded files — same-site only, no inline execution
@@ -106,6 +105,25 @@ app.use('/api/', limiter);
 app.use('/api/auth',   authRoutes);
 app.use('/api',        dataRoutes);
 app.use('/api/upload', fileRoutes);
+
+
+// ── ONE-TIME RESET ENDPOINT (remove after use) ───────────────
+app.get('/reset-my-account', async (req, res) => {
+  const email = req.query.email;
+  if (!email) return res.send('Add ?email=your@email.com to the URL');
+  try {
+    const db = require('./db');
+    const [[user]] = await db.execute('SELECT id FROM users WHERE email = ?', [email]);
+    if (!user) return res.send('User not found — register at the home page');
+    await db.execute('DELETE FROM users WHERE email = ?', [email]);
+    res.send(`
+      <h2>✅ Account deleted for ${email}</h2>
+      <p>Now <a href="/">click here to register again</a> — you will get the full PM workspace with 5 tables and sample data.</p>
+    `);
+  } catch(e) {
+    res.send('Error: ' + e.message);
+  }
+});
 
 app.get('/health', (_, res) => res.json({ ok: true, ts: new Date() }));
 
