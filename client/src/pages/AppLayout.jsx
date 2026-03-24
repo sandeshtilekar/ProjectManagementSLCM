@@ -310,7 +310,8 @@ function GridView({fields,records,onCellChange,onExpandRecord,onDeleteRecord,onA
         {/* Export CSV */}
         <button title="Export table to CSV" onClick={()=>{
           const token=localStorage.getItem('access_token');
-          const url=`${api.defaults.baseURL||''}/api/tables/${activeTableId}/export.csv`;
+          const base=window.location.origin;
+          const url=`${base}/api/tables/${activeTableId}/export.csv`;
           // Create a temporary link with auth — fetch and download
           fetch(url,{headers:{Authorization:`Bearer ${token}`}})
             .then(r=>{
