@@ -478,6 +478,30 @@ app.get('/run-migration', async (req, res) => {
   res.send('<h2>Migration complete</h2><pre>' + results.join('\n') + '</pre><p><a href="/run-seed?email=' + (req.query.email||'') + '">Now run seed →</a></p>');
 });
 
+
+// ── MAINFRAME SEED ENDPOINT ───────────────────────────────────
+app.get('/run-seed-mainframe', async (req, res) => {
+  const email = req.query.email;
+  if (!email) return res.send('Add ?email=your@email.com');
+  try {
+    const db = require('./db');
+    const [[user]] = await db.execute('SELECT id FROM users WHERE email = ?', [email]);
+    if (!user) return res.send('User not found');
+    const [[workspace]] = await db.execute(
+      'SELECT w.id FROM workspaces w JOIN workspace_members wm ON wm.workspace_id = w.id WHERE wm.user_id = ? LIMIT 1',
+      [user.id]
+    );
+    if (!workspace) return res.send('No workspace found');
+    const [[base]] = await db.execute('SELECT id FROM bases WHERE workspace_id = ? LIMIT 1', [workspace.id]);
+    if (!base) return res.send('No base found');
+    const { seedMainframe } = require('./seed-mainframe');
+    await seedMainframe(workspace.id, base.id, user.id);
+    res.send('<h2>✅ Mainframe module seeded!</h2><p>5 tables added: LPAR Register, Mainframe Software Register, MSU Consumption Tracker, PTF/Maintenance Log, IBM Contract & Wallet Register.</p><p><a href="/">Open the app and refresh →</a></p>');
+  } catch(e) {
+    res.send('<pre>Error: ' + e.stack + '</pre>');
+  }
+});
+
 app.get('/health', (_, res) => res.json({ ok: true, ts: new Date() }));
 
 // ONE-TIME RESET ENDPOINT — remove after use
