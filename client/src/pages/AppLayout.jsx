@@ -289,6 +289,48 @@ function GridView({fields,records,onCellChange,onExpandRecord,onDeleteRecord,onA
               width:160,fontFamily:'inherit'}}/>
         </span>
         <div style={{flex:1}}/>
+        {/* Import CSV */}
+        <label title="Import CSV or Excel file" style={{cursor:'pointer',display:'flex',alignItems:'center',
+          gap:4,background:T.surfaceActive,border:`1px solid ${T.border}`,borderRadius:6,
+          padding:'4px 10px',color:T.textMuted,fontSize:12,fontFamily:'inherit'}}>
+          <span style={{fontSize:13}}>⬆</span> Import
+          <input type="file" accept=".csv,.txt" style={{display:'none'}}
+            onChange={async e=>{
+              const file=e.target.files[0]; if(!file) return;
+              const fd=new FormData(); fd.append('file',file);
+              try{
+                const r=await api.post(`/tables/${activeTableId}/import`,fd,{headers:{'Content-Type':'multipart/form-data'}});
+                toast.success(`Imported ${r.data.imported} records${r.data.fieldsCreated>0?' + '+r.data.fieldsCreated+' new fields':''}`);
+                loadRecords(activeTableId);
+                if(r.data.fieldsCreated>0) loadFields(activeTableId);
+              }catch(err){toast.error(err.response?.data?.error||'Import failed');}
+              e.target.value='';
+            }}/>
+        </label>
+        {/* Export CSV */}
+        <button title="Export table to CSV" onClick={()=>{
+          const token=localStorage.getItem('access_token');
+          const url=`${api.defaults.baseURL||''}/api/tables/${activeTableId}/export.csv`;
+          // Create a temporary link with auth — fetch and download
+          fetch(url,{headers:{Authorization:`Bearer ${token}`}})
+            .then(r=>{
+              const cd=r.headers.get('content-disposition')||'';
+              const m=cd.match(/filename="([^"]+)"/);
+              const fname=m?m[1]:'export.csv';
+              return r.blob().then(b=>({b,fname}));
+            })
+            .then(({b,fname})=>{
+              const a=document.createElement('a');
+              a.href=URL.createObjectURL(b); a.download=fname; a.click();
+              URL.revokeObjectURL(a.href);
+              toast.success('Exported to CSV');
+            })
+            .catch(()=>toast.error('Export failed'));
+        }} style={{cursor:'pointer',display:'flex',alignItems:'center',gap:4,
+          background:T.surfaceActive,border:`1px solid ${T.border}`,borderRadius:6,
+          padding:'4px 10px',color:T.textMuted,fontSize:12,fontFamily:'inherit'}}>
+          <span style={{fontSize:13}}>⬇</span> Export
+        </button>
         <span style={{color:T.textFaint,fontSize:12}}>{rows.length} records</span>
       </div>
       <div style={{flex:1,overflow:'auto'}}>
