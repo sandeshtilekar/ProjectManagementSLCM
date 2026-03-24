@@ -478,7 +478,7 @@ function SmartTableList({ tables, activeTable, onSelect }) {
       whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
       transition: 'background .1s',
     }}
-    onMouseEnter={e => { if(t.id!==activeTable?.id) e.currentTarget.style.background=T.surfaceHover; }}
+    onMouseEnter={e => { if(t.id!==activeTable?.id) e.currentTarget.style.background='#191d36'; }}
     onMouseLeave={e => { if(t.id!==activeTable?.id) e.currentTarget.style.background='transparent'; }}>
       {t.name}
     </div>
@@ -893,7 +893,7 @@ export default function AppLayout(){
         </div>
 
         {/* Tables list — grouped */}
-        <div style={{flex:1,overflowY:'auto',padding:'4px 0'}}>
+        <div style={{flex:1,overflowY:'auto',padding:'4px 0',scrollbarWidth:'thin'}}>
           <SmartTableList
             tables={tables}
             activeTable={activeTable}
