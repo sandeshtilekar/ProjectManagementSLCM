@@ -73,6 +73,15 @@ app.use('/api/auth', authRoutes);
 app.use('/api',      dataRoutes);
 app.use('/api/upload', fileRoutes);
 
+// ── Import / Export routes ───────────────────────────────────
+try {
+  const importExportRoutes = require('./routes/importexport');
+  app.use('/api', importExportRoutes);
+  console.log('✅ Import/Export routes loaded');
+} catch(e) {
+  console.warn('⚠  Import/Export routes skipped:', e.message);
+}
+
 // Integration routes (optional)
 try {
   const integrationRoutes = require('./routes/integrations');
