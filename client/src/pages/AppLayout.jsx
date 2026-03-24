@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import toast from 'react-hot-toast';
 import { useStore }      from '../context/store';
 import { useRealtime }   from '../hooks/useRealtime';
@@ -443,6 +443,89 @@ function GridView({fields,records,onCellChange,onExpandRecord,onDeleteRecord,onA
 
 // ── APP LAYOUT ────────────────────────────────────────────────
 
+
+// ── SMART TABLE LIST — grouped + collapsible ─────────────────
+const TABLE_GROUPS = [
+  { key: 'slm',        label: 'SLM Core',       icon: '⚙', match: ['asset','licence','license','vendor','contract','service catalogue','eol','refresh'] },
+  { key: 'change',     label: 'Change & Release',icon: '🔄', match: ['change','release','incident'] },
+  { key: 'mainframe',  label: 'Mainframe',       icon: '🖥', match: ['lpar','sysplex','msu','ptf','ibm','mainframe','wallet'] },
+  { key: 'pm',         label: 'Project Mgmt',    icon: '📋', match: ['project','sprint','risk','raid','team'] },
+];
+
+function SmartTableList({ tables, activeTable, onSelect }) {
+  // Assign each table to a group
+  const grouped = {};
+  const ungrouped = [];
+  TABLE_GROUPS.forEach(g => { grouped[g.key] = []; });
+
+  tables.forEach(t => {
+    const n = t.name.toLowerCase().replace(/[^a-z0-9 ]/g,'');
+    const grp = TABLE_GROUPS.find(g => g.match.some(m => n.includes(m)));
+    if (grp) grouped[grp.key].push(t);
+    else ungrouped.push(t);
+  });
+
+  const [collapsed, setCollapsed] = React.useState({});
+  const toggle = key => setCollapsed(c => ({...c, [key]: !c[key]}));
+
+  const TableItem = ({ t }) => (
+    <div onClick={() => onSelect(t)} style={{
+      padding: '6px 14px 6px 28px', cursor: 'pointer', fontSize: 12,
+      borderLeft: t.id===activeTable?.id ? `2px solid ${T.accent}` : '2px solid transparent',
+      background: t.id===activeTable?.id ? T.surfaceActive : 'transparent',
+      color: t.id===activeTable?.id ? T.text : T.textMuted,
+      fontWeight: t.id===activeTable?.id ? 500 : 400,
+      whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
+      transition: 'background .1s',
+    }}
+    onMouseEnter={e => { if(t.id!==activeTable?.id) e.currentTarget.style.background=T.surfaceHover; }}
+    onMouseLeave={e => { if(t.id!==activeTable?.id) e.currentTarget.style.background='transparent'; }}>
+      {t.name}
+    </div>
+  );
+
+  return (
+    <div>
+      {TABLE_GROUPS.map(g => {
+        const items = grouped[g.key];
+        if (!items.length) return null;
+        const isOpen = !collapsed[g.key];
+        const hasActive = items.some(t => t.id===activeTable?.id);
+        return (
+          <div key={g.key}>
+            <div onClick={() => toggle(g.key)} style={{
+              display: 'flex', alignItems: 'center', gap: 6,
+              padding: '5px 12px', cursor: 'pointer', userSelect: 'none',
+              color: hasActive ? T.text : T.textFaint,
+              fontSize: 10, fontWeight: 700, textTransform: 'uppercase', letterSpacing: .8,
+            }}
+            onMouseEnter={e => e.currentTarget.style.color=T.textMuted}
+            onMouseLeave={e => e.currentTarget.style.color=hasActive?T.text:T.textFaint}>
+              <span style={{fontSize:12}}>{g.icon}</span>
+              <span style={{flex:1}}>{g.label}</span>
+              <span style={{fontSize:9,opacity:.6}}>{isOpen?'▾':'▸'}</span>
+              <span style={{fontSize:10,opacity:.5,marginLeft:2}}>{items.length}</span>
+            </div>
+            {isOpen && items.map(t => <TableItem key={t.id} t={t}/>)}
+          </div>
+        );
+      })}
+      {ungrouped.map(t => (
+        <div key={t.id} onClick={() => onSelect(t)} style={{
+          padding: '6px 14px', cursor: 'pointer', fontSize: 12,
+          borderLeft: t.id===activeTable?.id ? `2px solid ${T.accent}` : '2px solid transparent',
+          background: t.id===activeTable?.id ? T.surfaceActive : 'transparent',
+          color: t.id===activeTable?.id ? T.text : T.textMuted,
+          fontWeight: t.id===activeTable?.id ? 500 : 400,
+          whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
+        }}>
+          {t.name}
+        </div>
+      ))}
+    </div>
+  );
+}
+
 // ── DASHBOARD ─────────────────────────────────────────────────
 function Dashboard({ tables, onNavigate }) {
   const [stats, setStats] = useState(null);
@@ -809,20 +892,13 @@ export default function AppLayout(){
           </div>
         </div>
 
-        {/* Tables list */}
-        <div style={{padding:'8px 12px 4px'}}>
-          <div style={{color:T.textFaint,fontSize:9,fontWeight:700,textTransform:'uppercase',letterSpacing:1}}>Tables</div>
-        </div>
-        <div style={{flex:1,overflowY:'auto'}}>
-          {tables.map(t=>(
-            <div key={t.id} onClick={()=>{setActiveTable(t);setShowDashboard(false);}}
-              style={{padding:'7px 14px',cursor:'pointer',
-                borderLeft:t.id===activeTable?.id?`2px solid ${T.accent}`:'2px solid transparent',
-                background:t.id===activeTable?.id?T.surfaceActive:'transparent',
-                color:t.id===activeTable?.id?T.text:T.textMuted,fontSize:13,fontWeight:t.id===activeTable?.id?500:400}}>
-              {t.name}
-            </div>
-          ))}
+        {/* Tables list — grouped */}
+        <div style={{flex:1,overflowY:'auto',padding:'4px 0'}}>
+          <SmartTableList
+            tables={tables}
+            activeTable={activeTable}
+            onSelect={t=>{setActiveTable(t);setShowDashboard(false);}}
+          />
         </div>
 
         <button onClick={logout} style={{margin:10,padding:'8px',borderRadius:6,
