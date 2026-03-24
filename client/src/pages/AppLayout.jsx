@@ -442,6 +442,291 @@ function GridView({fields,records,onCellChange,onExpandRecord,onDeleteRecord,onA
 }
 
 // ── APP LAYOUT ────────────────────────────────────────────────
+
+// ── DASHBOARD ─────────────────────────────────────────────────
+function Dashboard({ tables, onNavigate }) {
+  const [stats, setStats] = useState(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    async function load() {
+      try {
+        // Load all table data in parallel
+        const results = await Promise.all(
+          tables.map(async t => {
+            try {
+              const [fr, rr] = await Promise.all([
+                api.get(`/tables/${t.id}/fields`),
+                api.get(`/tables/${t.id}/records`),
+              ]);
+              return { table: t, fields: fr.data, records: rr.data };
+            } catch { return { table: t, fields: [], records: [] }; }
+          })
+        );
+
+        // Build stats by scanning known table types
+        const s = {
+          totalTables: tables.length,
+          totalRecords: results.reduce((a, r) => a + r.records.length, 0),
+          assets: { total: 0, active: 0, eolWarning: 0, endOfLife: 0 },
+          licences: { total: 0, compliant: 0, overLicensed: 0, underLicensed: 0, expired: 0 },
+          changes: { total: 0, open: 0, completed: 0, failed: 0 },
+          incidents: { total: 0, p1: 0, p2: 0, open: 0 },
+          eol: { overdue: 0, critical: 0, high: 0 },
+          contracts: { total: 0, active: 0, expiringSoon: 0, expired: 0 },
+          msu: { overages: 0, nearThreshold: 0 },
+          releases: { total: 0, released: 0, inFlight: 0, failed: 0 },
+          tableData: results,
+        };
+
+        results.forEach(({ table, fields, records }) => {
+          const n = table.name.toLowerCase();
+          const getVal = (rec, fieldName) => {
+            const f = fields.find(f => f.name.toLowerCase().includes(fieldName.toLowerCase()));
+            if (!f) return '';
+            return String(rec[f.id] || '');
+          };
+
+          if (n.includes('asset')) {
+            s.assets.total = records.length;
+            records.forEach(r => {
+              const st = getVal(r, 'lifecycle').toLowerCase();
+              if (st.includes('active')) s.assets.active++;
+              if (st.includes('eol warning') || st.includes('warning')) s.assets.eolWarning++;
+              if (st.includes('end of life') || st === 'end of life') s.assets.endOfLife++;
+            });
+          }
+          if (n.includes('licence') || n.includes('license')) {
+            s.licences.total = records.length;
+            records.forEach(r => {
+              const st = getVal(r, 'compliance').toLowerCase();
+              if (st.includes('compliant') && !st.includes('non')) s.licences.compliant++;
+              if (st.includes('over')) s.licences.overLicensed++;
+              if (st.includes('under')) s.licences.underLicensed++;
+              if (st.includes('expired')) s.licences.expired++;
+            });
+          }
+          if (n.includes('change')) {
+            s.changes.total = records.length;
+            records.forEach(r => {
+              const st = getVal(r, 'status').toLowerCase();
+              if (['draft','submitted','cab review','approved','scheduled','in progress'].some(v => st.includes(v))) s.changes.open++;
+              if (st.includes('completed')) s.changes.completed++;
+              if (st.includes('failed') || st.includes('rolled back')) s.changes.failed++;
+            });
+          }
+          if (n.includes('incident')) {
+            s.incidents.total = records.length;
+            records.forEach(r => {
+              const sev = getVal(r, 'severity').toLowerCase();
+              const st = getVal(r, 'status').toLowerCase();
+              if (sev.includes('p1')) s.incidents.p1++;
+              if (sev.includes('p2')) s.incidents.p2++;
+              if (['open','investigating','identified','monitoring'].some(v => st.includes(v))) s.incidents.open++;
+            });
+          }
+          if (n.includes('eol') || n.includes('refresh')) {
+            records.forEach(r => {
+              const urg = getVal(r, 'urgency').toLowerCase();
+              if (urg.includes('overdue')) s.eol.overdue++;
+              if (urg.includes('critical')) s.eol.critical++;
+              if (urg.includes('high')) s.eol.high++;
+            });
+          }
+          if (n.includes('vendor') || n.includes('contract')) {
+            s.contracts.total = records.length;
+            records.forEach(r => {
+              const st = getVal(r, 'status').toLowerCase();
+              if (st.includes('active')) s.contracts.active++;
+              if (st.includes('expiring')) s.contracts.expiringSoon++;
+              if (st.includes('expired') && !st.includes('expiring')) s.contracts.expired++;
+            });
+          }
+          if (n.includes('msu')) {
+            records.forEach(r => {
+              const st = getVal(r, 'status').toLowerCase();
+              if (st.includes('overage')) s.msu.overages++;
+              if (st.includes('near')) s.msu.nearThreshold++;
+            });
+          }
+          if (n.includes('release')) {
+            s.releases.total = records.length;
+            records.forEach(r => {
+              const st = getVal(r, 'status').toLowerCase();
+              if (st.includes('released')) s.releases.released++;
+              if (['planning','dev complete','sit','uat','scheduled'].some(v => st.includes(v))) s.releases.inFlight++;
+              if (st.includes('failed')) s.releases.failed++;
+            });
+          }
+        });
+
+        setStats(s);
+      } catch(e) { console.error(e); }
+      finally { setLoading(false); }
+    }
+    if (tables.length) load();
+    else { setLoading(false); }
+  }, [tables.map(t=>t.id).join(',')]);
+
+  const Card = ({ color, label, value, sub, onClick, alert }) => (
+    <div onClick={onClick} style={{
+      background: T.surface, border: `1px solid ${alert ? color+'66' : T.border}`,
+      borderRadius: 10, padding: '14px 16px', cursor: onClick ? 'pointer' : 'default',
+      transition: 'border-color .15s', minWidth: 0,
+      boxShadow: alert ? `0 0 0 1px ${color}33` : 'none',
+    }}
+    onMouseEnter={e => { if(onClick) e.currentTarget.style.borderColor = color; }}
+    onMouseLeave={e => { if(onClick) e.currentTarget.style.borderColor = alert ? color+'66' : T.border; }}>
+      <div style={{ color: T.textFaint, fontSize: 10, fontWeight: 600, textTransform: 'uppercase', letterSpacing: .8, marginBottom: 6 }}>{label}</div>
+      <div style={{ color, fontSize: 28, fontWeight: 700, lineHeight: 1, marginBottom: 4 }}>{value}</div>
+      {sub && <div style={{ color: T.textMuted, fontSize: 11, marginTop: 2 }}>{sub}</div>}
+    </div>
+  );
+
+  const MiniBar = ({ label, value, max, color }) => {
+    const pct = max > 0 ? Math.min(100, Math.round(value / max * 100)) : 0;
+    return (
+      <div style={{ marginBottom: 8 }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 3 }}>
+          <span style={{ color: T.textMuted, fontSize: 11 }}>{label}</span>
+          <span style={{ color: T.text, fontSize: 11, fontWeight: 600 }}>{value}</span>
+        </div>
+        <div style={{ height: 4, background: T.border, borderRadius: 2 }}>
+          <div style={{ height: 4, width: pct + '%', background: color, borderRadius: 2, transition: 'width .4s' }}/>
+        </div>
+      </div>
+    );
+  };
+
+  const navTo = name => {
+    const t = tables.find(t => t.name.toLowerCase().includes(name.toLowerCase()));
+    if (t) onNavigate(t);
+  };
+
+  if (loading) return (
+    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%', flexDirection: 'column', gap: 12 }}>
+      <div style={{ width: 32, height: 32, border: `3px solid ${T.border}`, borderTopColor: T.accent, borderRadius: '50%', animation: 'spin 1s linear infinite' }}/>
+      <span style={{ color: T.textMuted, fontSize: 13 }}>Loading dashboard...</span>
+      <style>{`@keyframes spin{to{transform:rotate(360deg)}}`}</style>
+    </div>
+  );
+
+  if (!stats || tables.length === 0) return (
+    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%', color: T.textMuted, fontSize: 14 }}>
+      No tables yet — add some tables to see your dashboard.
+    </div>
+  );
+
+  return (
+    <div style={{ padding: '20px 24px', overflowY: 'auto', height: '100%' }}>
+      {/* Header */}
+      <div style={{ marginBottom: 20 }}>
+        <div style={{ color: T.text, fontSize: 20, fontWeight: 700, marginBottom: 4 }}>SLM Dashboard</div>
+        <div style={{ color: T.textFaint, fontSize: 12 }}>{stats.totalTables} tables · {stats.totalRecords} total records · {new Date().toLocaleDateString('en-IN',{day:'2-digit',month:'short',year:'numeric'})}</div>
+      </div>
+
+      {/* Alert banner — show if any critical issues */}
+      {(stats.eol.overdue > 0 || stats.licences.expired > 0 || stats.msu.overages > 0 || stats.contracts.expiringSoon > 0) && (
+        <div style={{ background: '#2d1a05', border: '1px solid #f59e0b44', borderRadius: 8, padding: '10px 14px', marginBottom: 18, display: 'flex', alignItems: 'center', gap: 10 }}>
+          <span style={{ fontSize: 16 }}>⚠</span>
+          <span style={{ color: '#f59e0b', fontSize: 12, fontWeight: 500 }}>
+            Action required:
+            {stats.eol.overdue > 0 && ` ${stats.eol.overdue} overdue EOL items`}
+            {stats.licences.expired > 0 && ` · ${stats.licences.expired} expired licences`}
+            {stats.msu.overages > 0 && ` · ${stats.msu.overages} MSU overages`}
+            {stats.contracts.expiringSoon > 0 && ` · ${stats.contracts.expiringSoon} contracts expiring soon`}
+          </span>
+        </div>
+      )}
+
+      {/* Row 1 — key metrics */}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(160px, 1fr))', gap: 12, marginBottom: 20 }}>
+        <Card color={T.accent}       label="Total Assets"       value={stats.assets.total}       sub={`${stats.assets.active} active`}                onClick={() => navTo('asset')} />
+        <Card color="#10d9a0"        label="Compliant Licences" value={stats.licences.compliant}  sub={`of ${stats.licences.total} total`}              onClick={() => navTo('licence')} />
+        <Card color="#60a5fa"        label="Open Changes"       value={stats.changes.open}        sub={`${stats.changes.completed} completed`}          onClick={() => navTo('change')} />
+        <Card color="#f59e0b"        label="EOL / Overdue"      value={stats.eol.overdue}         sub={`${stats.eol.critical} critical`}  alert={stats.eol.overdue > 0} onClick={() => navTo('eol')} />
+        <Card color="#e879f9"        label="Releases In Flight" value={stats.releases.inFlight}   sub={`${stats.releases.released} released`}           onClick={() => navTo('release')} />
+        <Card color="#f87171"        label="Open Incidents"     value={stats.incidents.open}      sub={`${stats.incidents.p1} P1 · ${stats.incidents.p2} P2`} alert={stats.incidents.p1 > 0} onClick={() => navTo('incident')} />
+        <Card color="#f59e0b"        label="Contracts Expiring" value={stats.contracts.expiringSoon} sub={`${stats.contracts.active} active`} alert={stats.contracts.expiringSoon > 0} onClick={() => navTo('vendor')} />
+        <Card color="#fb923c"        label="MSU Overages"       value={stats.msu.overages}        sub={`${stats.msu.nearThreshold} near threshold`} alert={stats.msu.overages > 0} onClick={() => navTo('msu')} />
+      </div>
+
+      {/* Row 2 — breakdown panels */}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(240px, 1fr))', gap: 14, marginBottom: 20 }}>
+
+        {/* Asset health */}
+        <div style={{ background: T.surface, border: `1px solid ${T.border}`, borderRadius: 10, padding: '14px 16px' }}>
+          <div style={{ color: T.textMuted, fontSize: 11, fontWeight: 600, textTransform: 'uppercase', letterSpacing: .8, marginBottom: 12 }}>Asset Lifecycle Health</div>
+          <MiniBar label="Active"       value={stats.assets.active}    max={stats.assets.total} color="#10d9a0" />
+          <MiniBar label="EOL Warning"  value={stats.assets.eolWarning} max={stats.assets.total} color="#f59e0b" />
+          <MiniBar label="End of Life"  value={stats.assets.endOfLife} max={stats.assets.total} color="#f87171" />
+          <div style={{ borderTop: `1px solid ${T.border}`, marginTop: 10, paddingTop: 10, display: 'flex', justifyContent: 'space-between', cursor: 'pointer' }}
+            onClick={() => navTo('asset')}>
+            <span style={{ color: T.textFaint, fontSize: 11 }}>View Software Asset Register →</span>
+          </div>
+        </div>
+
+        {/* Licence compliance */}
+        <div style={{ background: T.surface, border: `1px solid ${T.border}`, borderRadius: 10, padding: '14px 16px' }}>
+          <div style={{ color: T.textMuted, fontSize: 11, fontWeight: 600, textTransform: 'uppercase', letterSpacing: .8, marginBottom: 12 }}>Licence Compliance</div>
+          <MiniBar label="Compliant"      value={stats.licences.compliant}     max={stats.licences.total} color="#10d9a0" />
+          <MiniBar label="Over-licensed"  value={stats.licences.overLicensed}  max={stats.licences.total} color="#60a5fa" />
+          <MiniBar label="Under-licensed" value={stats.licences.underLicensed} max={stats.licences.total} color="#f59e0b" />
+          <MiniBar label="Expired"        value={stats.licences.expired}       max={stats.licences.total} color="#f87171" />
+          <div style={{ borderTop: `1px solid ${T.border}`, marginTop: 10, paddingTop: 10, cursor: 'pointer' }}
+            onClick={() => navTo('licence')}>
+            <span style={{ color: T.textFaint, fontSize: 11 }}>View Licence Manager →</span>
+          </div>
+        </div>
+
+        {/* Change pipeline */}
+        <div style={{ background: T.surface, border: `1px solid ${T.border}`, borderRadius: 10, padding: '14px 16px' }}>
+          <div style={{ color: T.textMuted, fontSize: 11, fontWeight: 600, textTransform: 'uppercase', letterSpacing: .8, marginBottom: 12 }}>Change Pipeline</div>
+          <MiniBar label="Open / In Progress" value={stats.changes.open}      max={stats.changes.total} color="#60a5fa" />
+          <MiniBar label="Completed"          value={stats.changes.completed} max={stats.changes.total} color="#10d9a0" />
+          <MiniBar label="Failed / Rolled Back" value={stats.changes.failed}  max={stats.changes.total} color="#f87171" />
+          <div style={{ borderTop: `1px solid ${T.border}`, marginTop: 10, paddingTop: 10, cursor: 'pointer' }}
+            onClick={() => navTo('change')}>
+            <span style={{ color: T.textFaint, fontSize: 11 }}>View Change Register →</span>
+          </div>
+        </div>
+
+        {/* EOL urgency */}
+        <div style={{ background: T.surface, border: `1px solid ${T.border}`, borderRadius: 10, padding: '14px 16px' }}>
+          <div style={{ color: T.textMuted, fontSize: 11, fontWeight: 600, textTransform: 'uppercase', letterSpacing: .8, marginBottom: 12 }}>EOL Urgency</div>
+          <MiniBar label="Overdue"           value={stats.eol.overdue}   max={stats.eol.overdue + stats.eol.critical + stats.eol.high || 1} color="#f87171" />
+          <MiniBar label="Critical 0-3 months" value={stats.eol.critical} max={stats.eol.overdue + stats.eol.critical + stats.eol.high || 1} color="#f59e0b" />
+          <MiniBar label="High 3-6 months"   value={stats.eol.high}      max={stats.eol.overdue + stats.eol.critical + stats.eol.high || 1} color="#fbbf24" />
+          <div style={{ borderTop: `1px solid ${T.border}`, marginTop: 10, paddingTop: 10, cursor: 'pointer' }}
+            onClick={() => navTo('eol')}>
+            <span style={{ color: T.textFaint, fontSize: 11 }}>View EOL & Refresh Planner →</span>
+          </div>
+        </div>
+
+      </div>
+
+      {/* Row 3 — tables quick access */}
+      <div style={{ background: T.surface, border: `1px solid ${T.border}`, borderRadius: 10, padding: '14px 16px' }}>
+        <div style={{ color: T.textMuted, fontSize: 11, fontWeight: 600, textTransform: 'uppercase', letterSpacing: .8, marginBottom: 12 }}>All Tables</div>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: 8 }}>
+          {stats.tableData.map(({ table, records }) => (
+            <div key={table.id} onClick={() => onNavigate(table)}
+              style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                padding: '8px 12px', background: T.surfaceActive, borderRadius: 7,
+                cursor: 'pointer', border: `1px solid transparent`, transition: 'border-color .15s' }}
+              onMouseEnter={e => e.currentTarget.style.borderColor = T.accent}
+              onMouseLeave={e => e.currentTarget.style.borderColor = 'transparent'}>
+              <span style={{ color: T.text, fontSize: 12, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1 }}>{table.name}</span>
+              <span style={{ color: T.textFaint, fontSize: 11, marginLeft: 8, flexShrink: 0 }}>{records.length}</span>
+            </div>
+          ))}
+        </div>
+      </div>
+
+    </div>
+  );
+}
+
 export default function AppLayout(){
   const {
     user, logout, workspaces, activeWs, setActiveWs,
@@ -454,6 +739,7 @@ export default function AppLayout(){
 
   const { collaborators, broadcastCellUpdate } = useRealtime(activeTable?.id);
   const [expandedRec, setExpandedRec]=useState(null);
+  const [showDashboard, setShowDashboard]=useState(false);
 
   useEffect(()=>{
     if(activeWs) loadBases(activeWs.id);
@@ -511,13 +797,25 @@ export default function AppLayout(){
           </div>
         )}
 
+        {/* Dashboard button */}
+        <div style={{padding:'6px 10px 2px'}}>
+          <div onClick={()=>{setShowDashboard(true);}} 
+            style={{padding:'7px 10px',borderRadius:7,cursor:'pointer',
+              background:showDashboard?T.surfaceActive:'transparent',
+              border:showDashboard?`1px solid ${T.accent}44`:'1px solid transparent',
+              color:showDashboard?T.text:T.textMuted,fontSize:13,fontWeight:500,
+              display:'flex',alignItems:'center',gap:8,transition:'all .15s'}}>
+            <span style={{fontSize:15}}>◈</span> Dashboard
+          </div>
+        </div>
+
         {/* Tables list */}
         <div style={{padding:'8px 12px 4px'}}>
           <div style={{color:T.textFaint,fontSize:9,fontWeight:700,textTransform:'uppercase',letterSpacing:1}}>Tables</div>
         </div>
         <div style={{flex:1,overflowY:'auto'}}>
           {tables.map(t=>(
-            <div key={t.id} onClick={()=>setActiveTable(t)}
+            <div key={t.id} onClick={()=>{setActiveTable(t);setShowDashboard(false);}}
               style={{padding:'7px 14px',cursor:'pointer',
                 borderLeft:t.id===activeTable?.id?`2px solid ${T.accent}`:'2px solid transparent',
                 background:t.id===activeTable?.id?T.surfaceActive:'transparent',
@@ -540,13 +838,15 @@ export default function AppLayout(){
         <div style={{display:'flex',alignItems:'center',padding:'0 16px',
           height:46,borderBottom:`1px solid ${T.border}`,background:T.sidebar,
           flexShrink:0,gap:12}}>
-          <span style={{color:T.text,fontSize:15,fontWeight:700,letterSpacing:'-.2px'}}>{activeTable?.name}</span>
-          <span style={{color:T.textFaint,fontSize:11}}>{records.length} records · {fields.length} fields</span>
+          <span style={{color:T.text,fontSize:15,fontWeight:700,letterSpacing:'-.2px'}}>{showDashboard?'SLM Dashboard':activeTable?.name}</span>
+          {!showDashboard&&<span style={{color:T.textFaint,fontSize:11}}>{records.length} records · {fields.length} fields</span>}
           <div style={{flex:1}}/>
           <Presence collaborators={collaborators}/>
         </div>
         <div style={{flex:1,overflow:'hidden'}}>
-          {activeTable?(
+          {showDashboard?(
+            <Dashboard tables={tables} onNavigate={t=>{setActiveTable(t);setShowDashboard(false);}}/>
+          ):activeTable?(
             <GridView
               fields={fields}
               records={records}
@@ -560,7 +860,7 @@ export default function AppLayout(){
           ):(
             <div style={{display:'flex',alignItems:'center',justifyContent:'center',
               height:'100%',color:T.textMuted,fontSize:14}}>
-              Select a table to get started
+              Select a table or open the Dashboard
             </div>
           )}
         </div>
