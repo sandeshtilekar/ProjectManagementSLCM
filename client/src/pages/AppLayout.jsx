@@ -819,9 +819,9 @@ export default function AppLayout(){
           <div style={{width:30,height:30,borderRadius:8,
             background:'linear-gradient(135deg,#5b7ffc,#8b5cf6)',
             display:'flex',alignItems:'center',justifyContent:'center',
-            fontSize:15,color:'#fff',flexShrink:0}}>⊞</div>
+            fontSize:15,color:'#fff',flexShrink:0}}>S</div>
           <div style={{flex:1,overflow:'hidden'}}>
-            <div style={{color:T.text,fontSize:14,fontWeight:700,letterSpacing:'-.3px'}}>GridBase</div>
+            <div style={{color:T.text,fontSize:14,fontWeight:700,letterSpacing:'-.3px'}}>SWLC DataGrid</div>
             <div style={{color:T.textFaint,fontSize:10,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{user?.email}</div>
           </div>
         </div>
@@ -896,7 +896,7 @@ export default function AppLayout(){
             {/* Export */}
             <button onClick={async()=>{
               try{
-                const token=localStorage.getItem('access_token');
+                const token=localStorage.getItem('gb_access');
                 const r=await fetch(`${window.location.origin}/api/tables/${activeTable.id}/export.csv`,
                   {headers:{Authorization:`Bearer ${token}`}});
                 if(!r.ok){ toast.error('Export failed'); return; }
