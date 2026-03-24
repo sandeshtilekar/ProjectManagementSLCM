@@ -289,48 +289,6 @@ function GridView({fields,records,onCellChange,onExpandRecord,onDeleteRecord,onA
               width:160,fontFamily:'inherit'}}/>
         </span>
         <div style={{flex:1}}/>
-        {/* Import CSV */}
-        <label title="Import CSV or Excel file" style={{cursor:'pointer',display:'flex',alignItems:'center',
-          gap:4,background:T.surfaceActive,border:`1px solid ${T.border}`,borderRadius:6,
-          padding:'4px 10px',color:T.textMuted,fontSize:12,fontFamily:'inherit'}}>
-          <span style={{fontSize:13}}>⬆</span> Import
-          <input type="file" accept=".csv,.txt" style={{display:'none'}}
-            onChange={async e=>{
-              const file=e.target.files[0]; if(!file) return;
-              const fd=new FormData(); fd.append('file',file);
-              try{
-                const r=await api.post(`/tables/${activeTable.id}/import`,fd,{headers:{'Content-Type':'multipart/form-data'}});
-                toast.success(`Imported ${r.data.imported} records${r.data.fieldsCreated>0?' + '+r.data.fieldsCreated+' new fields':''}`);
-                loadRecords(activeTable.id);
-                if(r.data.fieldsCreated>0) loadFields(activeTable.id);
-              }catch(err){toast.error(err.response?.data?.error||'Import failed');}
-              e.target.value='';
-            }}/>
-        </label>
-        {/* Export CSV */}
-        <button title="Export table to CSV" onClick={async ()=>{
-          if(!activeTable?.id){ toast.error('Select a table first'); return; }
-          try{
-            const token=localStorage.getItem('access_token');
-            const url=`${window.location.origin}/api/tables/${activeTable.id}/export.csv`;
-            const r=await fetch(url,{headers:{Authorization:`Bearer ${token}`}});
-            if(!r.ok){ toast.error('Export failed'); return; }
-            const cd=r.headers.get('content-disposition')||'';
-            const m=cd.match(/filename="([^"]+)"/);
-            const fname=m?m[1]:(activeTable.name||'export').replace(/[^a-z0-9]/gi,'-').toLowerCase()+'.csv';
-            const blob=await r.blob();
-            const a=document.createElement('a');
-            a.href=URL.createObjectURL(blob); a.download=fname;
-            document.body.appendChild(a); a.click();
-            document.body.removeChild(a);
-            URL.revokeObjectURL(a.href);
-            toast.success(`Exported ${activeTable.name} to CSV`);
-          }catch(e){ toast.error('Export failed: '+e.message); }
-        }} style={{cursor:'pointer',display:'flex',alignItems:'center',gap:4,
-          background:T.surfaceActive,border:`1px solid ${T.border}`,borderRadius:6,
-          padding:'4px 10px',color:T.textMuted,fontSize:12,fontFamily:'inherit'}}>
-          <span style={{fontSize:13}}>⬇</span> Export
-        </button>
         <span style={{color:T.textFaint,fontSize:12}}>{rows.length} records</span>
       </div>
       <div style={{flex:1,overflow:'auto'}}>
@@ -915,6 +873,48 @@ export default function AppLayout(){
           flexShrink:0,gap:12}}>
           <span style={{color:T.text,fontSize:15,fontWeight:700,letterSpacing:'-.2px'}}>{showDashboard?'SLM Dashboard':activeTable?.name}</span>
           {!showDashboard&&<span style={{color:T.textFaint,fontSize:11}}>{records.length} records · {fields.length} fields</span>}
+          <div style={{flex:1}}/>
+          {!showDashboard&&activeTable&&(<>
+            {/* Import */}
+            <label style={{cursor:'pointer',display:'flex',alignItems:'center',gap:4,
+              background:'transparent',border:`1px solid ${T.border}`,borderRadius:6,
+              padding:'4px 10px',color:T.textMuted,fontSize:12,fontFamily:'inherit'}}>
+              <span>⬆</span> Import
+              <input type="file" accept=".csv,.txt" style={{display:'none'}}
+                onChange={async e=>{
+                  const file=e.target.files[0]; if(!file) return;
+                  const fd=new FormData(); fd.append('file',file);
+                  try{
+                    const {data}=await api.post(`/tables/${activeTable.id}/import`,fd,
+                      {headers:{'Content-Type':'multipart/form-data'}});
+                    toast.success(`Imported ${data.imported} records${data.fieldsCreated>0?' + '+data.fieldsCreated+' new fields':''}`);
+                    await loadTables(bases[0]?.id);
+                  }catch(err){ toast.error(err.response?.data?.error||'Import failed'); }
+                  e.target.value='';
+                }}/>
+            </label>
+            {/* Export */}
+            <button onClick={async()=>{
+              try{
+                const token=localStorage.getItem('access_token');
+                const r=await fetch(`${window.location.origin}/api/tables/${activeTable.id}/export.csv`,
+                  {headers:{Authorization:`Bearer ${token}`}});
+                if(!r.ok){ toast.error('Export failed'); return; }
+                const blob=await r.blob();
+                const fname=activeTable.name.replace(/[^a-z0-9]/gi,'-').toLowerCase()+'.csv';
+                const a=document.createElement('a');
+                a.href=URL.createObjectURL(blob); a.download=fname;
+                document.body.appendChild(a); a.click();
+                document.body.removeChild(a);
+                URL.revokeObjectURL(a.href);
+                toast.success('Downloaded '+fname);
+              }catch(e){ toast.error('Export failed'); }
+            }} style={{cursor:'pointer',display:'flex',alignItems:'center',gap:4,
+              background:'transparent',border:`1px solid ${T.border}`,borderRadius:6,
+              padding:'4px 10px',color:T.textMuted,fontSize:12,fontFamily:'inherit'}}>
+              <span>⬇</span> Export
+            </button>
+          </>)}
           <div style={{flex:1}}/>
           <Presence collaborators={collaborators}/>
         </div>
